@@ -6,9 +6,9 @@ window.MessageExtractor.Telegram = {
     platform: 'telegram',
     
     config: {
-        chatContainer: '.scrollable-y, .bubble-group-container, [class*="scroller"]',
-        textNodes: '.message .text-content, .message .message-text, .bubble .text-content, .bubble .message-text, .text-content, .message-text, .message, .bubble',
-        images: 'img[class*="message"], img[class*="photo"], img[class*="media"]'
+        chatContainer: '.scrollable-y, .bubble-group-container, [class*="scroller"], .chat-history',
+        textNodes: 'div[role="article"] div:not(:empty), .message-text, .text-content, .message .bubble, [class*="bubble"][class*="content"]',
+        images: 'img[class*="message"], img[class*="photo"], img[class*="media"], .message img'
     },
     
     state: {
@@ -264,9 +264,33 @@ window.MessageExtractor.Telegram = {
     // 텔레그램 전용: 메시지 버블 노드 수집
     getMessageNodes: function(chatContainer) {
         if (!chatContainer || !chatContainer.querySelectorAll) return [];
-        return chatContainer.querySelectorAll(
-            '[data-message-id], .message, .bubble, .message-list-item, .bubble-content, .message-bubble'
-        );
+        
+        // 시도 1: role="article" (Telegram Web 표준)
+        var nodes = chatContainer.querySelectorAll('div[role="article"]');
+        if (nodes.length > 0) return nodes;
+        
+        // 시도 2: data-message-id 속성
+        nodes = chatContainer.querySelectorAll('[data-message-id]');
+        if (nodes.length > 0) return nodes;
+        
+        // 시도 3: class 패턴 (bubble, message 등)
+        nodes = chatContainer.querySelectorAll('[class*="bubble"], [class*="message"]');
+        if (nodes.length > 0) {
+            // 너무 많으면 필터링 (예: 1000개 이상은 뭔가 잘못된 것)
+            if (nodes.length < 1000) return nodes;
+        }
+        
+        // 시도 4: 더 깊은 검색
+        nodes = chatContainer.querySelectorAll('div[class]');
+        // 메시지처럼 보이는 요소들만 필터링 (class가 있고 텍스트가 있는 것)
+        var filtered = [];
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].innerText && nodes[i].innerText.trim().length > 0) {
+                filtered.push(nodes[i]);
+                if (filtered.length > 200) break; // 너무 많으면 멈춤
+            }
+        }
+        return filtered.length > 0 ? filtered : [];
     },
     
     identifySpeaker: function(element) {

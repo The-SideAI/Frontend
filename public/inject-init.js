@@ -34,6 +34,14 @@
 
         var chatContainer = document.querySelector(extractor.config.chatContainer) || document.body;
         
+        console.log('[Scan] Chat container found:', !!chatContainer, 'className:', chatContainer.className);
+        console.log('[Scan] Extractor methods available:', {
+          getMessageNodes: !!extractor.getMessageNodes,
+          getMessageText: !!extractor.getMessageText,
+          preScan: !!extractor.preScan,
+          config: !!extractor.config
+        });
+        
         // 플랫폼별 사전 스캔 (있으면 실행)
         if (extractor.preScan) {
           extractor.preScan(chatContainer);
@@ -43,6 +51,25 @@
           ? extractor.getMessageNodes(chatContainer)
           : chatContainer.querySelectorAll(extractor.config.textNodes);
 
+        console.log('[Scan] Found ' + textNodes.length + ' text nodes');
+        
+        // 선택자 디버그 - 항상 실행
+        console.log('[Scan] DEBUG - Testing selectors on chatContainer:');
+        var alt1 = chatContainer.querySelectorAll('[class*="bubble"]');
+        console.log('  [class*="bubble"]: ' + alt1.length);
+        var alt2 = chatContainer.querySelectorAll('[class*="message"]');
+        console.log('  [class*="message"]: ' + alt2.length);
+        var alt3 = chatContainer.querySelectorAll('div[role="article"]');
+        console.log('  div[role="article"]: ' + alt3.length);
+        var alt4 = chatContainer.querySelectorAll('[dir="auto"]');
+        console.log('  [dir="auto"]: ' + alt4.length);
+        var alt5 = chatContainer.querySelectorAll('[class*="group"]');
+        console.log('  [class*="group"]: ' + alt5.length);
+        var alt6 = chatContainer.querySelectorAll('[data-test-id]');
+        console.log('  [data-test-id]: ' + alt6.length);
+        var alt7 = chatContainer.querySelectorAll('div[class]');
+        console.log('  div[class] (all divs with class): ' + alt7.length);
+
         textNodes.forEach(function (node) {
           var element = node;
           var text = extractor.getMessageText
@@ -51,13 +78,29 @@
           var viewportTarget = extractor.getMessageTextElement
             ? extractor.getMessageTextElement(element)
             : element;
-          if (!text || !window.MessageExtractor.isElementInViewport(viewportTarget)) return;
-          if (extractor.shouldFilterOut(text)) return;
+          
+          if (!text) {
+            console.log('[Scan] Skipped: empty text');
+            return;
+          }
+          
+          if (!window.MessageExtractor.isElementInViewport(viewportTarget)) {
+            console.log('[Scan] Skipped: not in viewport');
+            return;
+          }
+          
+          if (extractor.shouldFilterOut(text)) {
+            console.log('[Scan] Skipped: filtered out - ' + text.substring(0, 30));
+            return;
+          }
 
           var normalized = window.MessageExtractor.normalizeContent(text);
           var contentKey = 'TEXT_' + normalized;
 
-          if (window.PROCESSED_CONTENTS.has(contentKey)) return;
+          if (window.PROCESSED_CONTENTS.has(contentKey)) {
+            console.log('[Scan] Skipped: already processed');
+            return;
+          }
 
           // 플랫폼별 content 처리 (있으면 사용, 없으면 원본)
           var processed = extractor.processContent ? extractor.processContent(text, node) : {
@@ -87,22 +130,29 @@
 
           window.COLLECTED_DB.set(contentKey, messageData);
 
-          console.log('[Collected Message]', {
+          console.log('[Scan] ADDED text message:', {
             type: messageData.type,
             sender: messageData.sender,
-            content: messageData.content,
-            timestamp: messageData.timestamp,
-            timestampText: messageData.timestampText
+            content: messageData.content.substring(0, 50)
           });
 
           window.PROCESSED_CONTENTS.add(contentKey);
         });
 
         var images = chatContainer.querySelectorAll(extractor.config.images);
+        
+        console.log('[Scan] Found ' + images.length + ' images');
+
         images.forEach(function (img) {
           var rect = img.getBoundingClientRect();
-          if (!window.MessageExtractor.isElementInViewport(img)) return;
-          if (rect.width < 50 || rect.height < 50) return;
+          if (!window.MessageExtractor.isElementInViewport(img)) {
+            console.log('[Scan] Image skipped: not in viewport');
+            return;
+          }
+          if (rect.width < 50 || rect.height < 50) {
+            console.log('[Scan] Image skipped: too small (' + rect.width + 'x' + rect.height + ')');
+            return;
+          }
 
           var src = img.src;
           if (img.srcset) {
@@ -111,7 +161,10 @@
           }
 
           var contentKey = 'IMG_' + src;
-          if (window.PROCESSED_CONTENTS.has(contentKey)) return;
+          if (window.PROCESSED_CONTENTS.has(contentKey)) {
+            console.log('[Scan] Image skipped: already processed');
+            return;
+          }
 
           var timeInfo = extractor.findNearestTime(img);
           var counter = messageCounter++;
@@ -134,12 +187,10 @@
 
           window.COLLECTED_DB.set(contentKey, imageData);
 
-          console.log('[Collected Message]', {
+          console.log('[Scan] ADDED image message:', {
             type: imageData.type,
             sender: imageData.sender,
-            content: imageData.content,
-            timestamp: imageData.timestamp,
-            timestampText: imageData.timestampText
+            content: imageData.content.substring(0, 50)
           });
 
           window.PROCESSED_CONTENTS.add(contentKey);
@@ -281,7 +332,17 @@
       var data = Array.from(window.COLLECTED_DB.values());
       data = window.MessageExtractor.sortMessages(data);
 
-      console.log('[Collected] ' + data.length + ' messages');
+      console.log('\n========== 📊 COLLECTED MESSAGES ==========');
+      console.log('Total: ' + data.length + ' messages');
+      data.forEach(function(msg, index) {
+        console.log('\n[Message ' + (index + 1) + ']');
+        console.log('  Type: ' + msg.type);
+        console.log('  Sender: ' + msg.sender);
+        console.log('  Content: ' + (msg.content.substring(0, 100) || '(empty)'));
+        console.log('  Timestamp: ' + (msg.timestampText || 'N/A'));
+      });
+      console.log('\n========== END ==========\n');
+      
       if (data.length > 0) {
         console.table(data);
       } else {

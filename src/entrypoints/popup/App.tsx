@@ -92,6 +92,13 @@ function App() {
       sourceUrl,
     };
 
+    console.log('\n========== 📤 API REQUEST ==========');
+    console.log('UUID: ' + uuid);
+    console.log('SourceUrl: ' + sourceUrl);
+    console.log('Messages Count: ' + messages.length);
+    console.log('Payload:', payload);
+    console.log('========== END REQUEST ==========\n');
+
     try {
       const response = await fetch("http://localhost:8080/api/detection/analyze", {
         method: "POST",
@@ -106,7 +113,18 @@ function App() {
       }
 
       const result = await response.json();
-      console.log("분석 결과:", result);
+      
+      console.log('\n========== 📥 API RESPONSE ==========');
+      console.log('Risk Level: ' + result.riskLevel);
+      console.log('Type: ' + result.type);
+      console.log('Summary: ' + result.summary);
+      console.log('Next Question: ' + result.nextQuestion);
+      console.log('Reasons Count: ' + result.reason.length);
+      result.reason.forEach((r: ReasonItem, i: number) => {
+        console.log('  [' + (i + 1) + '] ' + r.source + ': ' + r.quote);
+      });
+      console.log('========== END RESPONSE ==========\n');
+      
       return result;
     } catch (error) {
       console.error("API 호출 실패:", error);
