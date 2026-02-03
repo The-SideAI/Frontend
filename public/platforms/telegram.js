@@ -1,4 +1,4 @@
-// 텔레그램 메시지 추출기
+// 텔레그램 메시지 추출기 (ES5 호환)
 
 window.MessageExtractor = window.MessageExtractor || {};
 
@@ -6,9 +6,9 @@ window.MessageExtractor.Telegram = {
     platform: 'telegram',
     
     config: {
-        chatContainer: '.scrollable-y, .bubble-group-container, [class*="scroller"], .chat-history',
-        textNodes: 'div[role="article"] div:not(:empty), .message-text, .text-content, .message .bubble, [class*="bubble"][class*="content"]',
-        images: 'img[class*="message"], img[class*="photo"], img[class*="media"], .message img'
+        chatContainer: 'body',
+        textNodes: '[data-message-id]',
+        images: 'img[class*="message"], img[class*="photo"], img[class*="media"]'
     },
     
     state: {
@@ -18,7 +18,7 @@ window.MessageExtractor.Telegram = {
     },
     
     init: function() {
-        const today = new Date();
+        var today = new Date();
         this.state.lastKnownDate = {
             year: today.getFullYear().toString(),
             month: String(today.getMonth() + 1).padStart(2, '0'),
@@ -26,21 +26,19 @@ window.MessageExtractor.Telegram = {
         };
     },
     
-    // content 끝의 시간 파싱 (예: "하이\n22:10" -> {time: "22:10", content: "하이"})
     extractTimeFromContent: function(content) {
         if (!content) return null;
         
-        // content 끝의 시간 패턴 추출 (HH:MM)
-        const timePattern = /\n(\d{1,2}):(\d{2})$/;
-        const match = content.match(timePattern);
+        var timePattern = /\n(\d{1,2}):(\d{2})$/;
+        var match = content.match(timePattern);
         
         if (match) {
-            const hour = match[1].padStart(2, '0');
-            const minute = match[2];
-            const cleanContent = content.substring(0, match.index);
+            var hour = match[1].padStart(2, '0');
+            var minute = match[2];
+            var cleanContent = content.substring(0, match.index);
             
             return {
-                time: `${hour}:${minute}`,
+                time: hour + ':' + minute,
                 content: cleanContent
             };
         }
@@ -48,39 +46,35 @@ window.MessageExtractor.Telegram = {
         return null;
     },
     
-    // 날짜 구분선 파싱 (예: "Saturday", "Friday", "Today", "Yesterday")
     parseDateSeparator: function(text) {
         if (!text) return null;
         
-        const trimmed = text.trim();
-        const today = new Date();
+        var trimmed = text.trim();
+        var today = new Date();
         
-        // "Today" 패턴
         if (/^(Today|오늘)$/i.test(trimmed)) {
-            const year = today.getFullYear().toString();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
+            var year = today.getFullYear().toString();
+            var month = String(today.getMonth() + 1).padStart(2, '0');
+            var day = String(today.getDate()).padStart(2, '0');
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
-        // "Yesterday" 패턴
         if (/^(Yesterday|어제)$/i.test(trimmed)) {
-            const yesterday = new Date(today);
+            var yesterday = new Date(today);
             yesterday.setDate(yesterday.getDate() - 1);
-            const year = yesterday.getFullYear().toString();
-            const month = String(yesterday.getMonth() + 1).padStart(2, '0');
-            const day = String(yesterday.getDate()).padStart(2, '0');
+            var year = yesterday.getFullYear().toString();
+            var month = String(yesterday.getMonth() + 1).padStart(2, '0');
+            var day = String(yesterday.getDate()).padStart(2, '0');
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
-        // 요일 패턴: "Monday", "Tuesday", etc.
-        const weekdayPattern = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|월요일|화요일|수요일|목요일|금요일|토요일|일요일)$/i;
+        var weekdayPattern = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|월요일|화요일|수요일|목요일|금요일|토요일|일요일)$/i;
         if (weekdayPattern.test(trimmed)) {
-            const weekdays = {
+            var weekdays = {
                 'monday': 1, '월요일': 1,
                 'tuesday': 2, '화요일': 2,
                 'wednesday': 3, '수요일': 3,
@@ -90,41 +84,38 @@ window.MessageExtractor.Telegram = {
                 'sunday': 0, '일요일': 0
             };
             
-            const targetDay = weekdays[trimmed.toLowerCase()];
-            const currentDay = today.getDay();
+            var targetDay = weekdays[trimmed.toLowerCase()];
+            var currentDay = today.getDay();
             
-            // 이번 주 또는 지난 주의 해당 요일 찾기 (과거 날짜)
-            let daysAgo = currentDay - targetDay;
-            if (daysAgo <= 0) daysAgo += 7; // 지난 주로 이동
+            var daysAgo = currentDay - targetDay;
+            if (daysAgo <= 0) daysAgo += 7;
             
-            const targetDate = new Date(today);
+            var targetDate = new Date(today);
             targetDate.setDate(targetDate.getDate() - daysAgo);
             
-            const year = targetDate.getFullYear().toString();
-            const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-            const day = String(targetDate.getDate()).padStart(2, '0');
+            var year = targetDate.getFullYear().toString();
+            var month = String(targetDate.getMonth() + 1).padStart(2, '0');
+            var day = String(targetDate.getDate()).padStart(2, '0');
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
-        // 한국어 패턴: "2월 1일", "12월 31일"
-        const koreanPattern = /^(\d{1,2})월\s*(\d{1,2})일$/;
-        const koreanMatch = trimmed.match(koreanPattern);
+        var koreanPattern = /^(\d{1,2})월\s*(\d{1,2})일$/;
+        var koreanMatch = trimmed.match(koreanPattern);
         if (koreanMatch) {
-            const month = koreanMatch[1].padStart(2, '0');
-            const day = koreanMatch[2].padStart(2, '0');
-            const year = today.getFullYear().toString();
+            var month = koreanMatch[1].padStart(2, '0');
+            var day = koreanMatch[2].padStart(2, '0');
+            var year = today.getFullYear().toString();
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
-        // 영어 패턴: "January 31", "Feb 1"
-        const englishPattern = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})$/i;
-        const englishMatch = trimmed.match(englishPattern);
+        var englishPattern = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})$/i;
+        var englishMatch = trimmed.match(englishPattern);
         if (englishMatch) {
-            const monthNames = {
+            var monthNames = {
                 'january': '01', 'jan': '01',
                 'february': '02', 'feb': '02',
                 'march': '03', 'mar': '03',
@@ -138,199 +129,208 @@ window.MessageExtractor.Telegram = {
                 'november': '11', 'nov': '11',
                 'december': '12', 'dec': '12'
             };
-            const month = monthNames[englishMatch[1].toLowerCase()];
-            const day = englishMatch[2].padStart(2, '0');
-            const year = today.getFullYear().toString();
+            var month = monthNames[englishMatch[1].toLowerCase()];
+            var day = englishMatch[2].padStart(2, '0');
+            var year = today.getFullYear().toString();
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
-        // YYYY. M. D. 패턴
-        const dotPattern = /^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?$/;
-        const dotMatch = trimmed.match(dotPattern);
+        var dotPattern = /^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?$/;
+        var dotMatch = trimmed.match(dotPattern);
         if (dotMatch) {
-            const year = dotMatch[1];
-            const month = dotMatch[2].padStart(2, '0');
-            const day = dotMatch[3].padStart(2, '0');
+            var year = dotMatch[1];
+            var month = dotMatch[2].padStart(2, '0');
+            var day = dotMatch[3].padStart(2, '0');
             
-            this.state.lastKnownDate = { year, month, day };
-            return { year, month, day };
+            this.state.lastKnownDate = { year: year, month: month, day: day };
+            return { year: year, month: month, day: day };
         }
         
         return null;
     },
     
     parseTimeText: function(text) {
-        // 날짜 구분선 체크
-        const dateInfo = this.parseDateSeparator(text);
+        var dateInfo = this.parseDateSeparator(text);
         if (dateInfo) {
-            return null; // 날짜 구분선은 메시지가 아님
+            return null;
         }
         
         if (!text) return null;
 
-        // 아이콘 글리프 제거 및 공백 정리
-        const cleaned = text
-            .replace(/[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]+/gu, '')
-            .trim();
+        var cleaned = text.replace(/[\uE000-\uF8FF]/g, '').trim();
 
-        // 시간 패턴 (예: 22:10, 10:10 PM)
-        const timePattern = /^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/;
-        const match = cleaned.match(timePattern);
+        var timePattern = /^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/;
+        var match = cleaned.match(timePattern);
         if (!match) return null;
 
-        let hour = parseInt(match[1], 10);
-        const minute = match[2];
-        const meridiem = match[3];
+        var hour = parseInt(match[1], 10);
+        var minute = match[2];
+        var meridiem = match[3];
 
         if (meridiem) {
-            const mer = meridiem.toLowerCase();
+            var mer = meridiem.toLowerCase();
             if (mer === 'pm' && hour !== 12) hour += 12;
             if (mer === 'am' && hour === 12) hour = 0;
         }
 
-        const date = this.state.lastKnownDate || {
+        var date = this.state.lastKnownDate || {
             year: new Date().getFullYear().toString(),
             month: String(new Date().getMonth() + 1).padStart(2, '0'),
             day: String(new Date().getDate()).padStart(2, '0')
         };
 
-        const time = `${hour.toString().padStart(2, '0')}:${minute}`;
-        const dateStr = `${date.year}-${date.month}-${date.day}T${time}:00`;
-        const timestamp = new Date(dateStr).getTime();
+        var time = hour.toString().padStart(2, '0') + ':' + minute;
+        var dateStr = date.year + '-' + date.month + '-' + date.day + 'T' + time + ':00';
+        var timestamp = new Date(dateStr).getTime();
 
         return {
             timestamp: timestamp,
-            text: `${date.year.slice(2)}. ${date.month}. ${date.day}. ${time}`
+            text: date.year.slice(2) + '. ' + date.month + '. ' + date.day + '. ' + time
         };
     },
     
     shouldFilterOut: function(text) {
         if (!text || !text.trim()) return true;
-        const trimmed = text.trim();
+        var trimmed = text.trim();
         
-        // 기본 필터링
         if (trimmed.length === 1 && trimmed !== '.') return true;
-
-        // 시간만 있는 텍스트는 필터링
         if (/^\d{1,2}:\d{2}\s*(AM|PM|am|pm)?$/.test(trimmed)) return true;
-        
-        // 날짜 구분선 필터링
         if (this.parseDateSeparator(trimmed)) return true;
         
         return false;
     },
 
-    // 텔레그램 전용: 메시지 텍스트 요소 찾기
     getMessageTextElement: function(node) {
         if (!node || !node.querySelector) return node;
-        return node.querySelector(
-            '.text-content, .message-text, .message-text-content, .text-entity, [dir="auto"]'
-        ) || node;
+        return node.querySelector('.text-content, .message-text, [dir="auto"]') || node;
     },
 
-    // 텔레그램 전용: 메시지 텍스트 추출 (노드가 컨테이너여도 동작)
     getMessageText: function(node) {
         if (!node) return '';
 
-        const textEl = this.getMessageTextElement(node);
-        let text = (textEl && (textEl.innerText || textEl.textContent)) || '';
-        text = text.trim();
-
-        if (!text && node.querySelectorAll) {
-            const parts = [];
-            const candidates = node.querySelectorAll(
-                '.text-content, .message-text, .message-text-content, .text-entity, [dir="auto"], span, div'
+        // 1단계: 직접 텍스트 추출 시도
+        var directText = (node.innerText || node.textContent || '').trim();
+        
+        // 2단계: .message-text, .text-content 등에서 찾기
+        if (!directText && node.querySelector) {
+            var textElements = node.querySelectorAll(
+                '.text-content, .message-text, .text, [class*="text"], [dir="auto"]'
             );
-            candidates.forEach((el) => {
-                const t = (el.innerText || el.textContent || '').trim();
-                if (!t) return;
-                // 시간/아이콘만 있는 조각은 제외
-                if (/^\d{1,2}:\d{2}\s*(AM|PM|am|pm)?$/.test(t)) return;
-                parts.push(t);
-            });
-            text = parts.join(' ').trim();
+            
+            var parts = [];
+            for (var i = 0; i < textElements.length; i++) {
+                var el = textElements[i];
+                var t = (el.innerText || el.textContent || '').trim();
+                if (!t) continue;
+                
+                // 시간만 있는 텍스트 제외
+                if (/^\d{1,2}:\d{2}\s*(AM|PM|am|pm)?$/.test(t)) continue;
+                
+                // 중복 제거 (이미 parts에 있으면 스킵)
+                if (parts.indexOf(t) === -1) {
+                    parts.push(t);
+                }
+            }
+            
+            if (parts.length > 0) {
+                directText = parts.join(' ');
+            }
         }
 
-        if (!text) return '';
+        if (!directText) return '';
 
         // 아이콘 글리프 제거
-        text = text.replace(/[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]+/gu, '').trim();
+        directText = directText.replace(/[\uE000-\uF8FF]/g, '').trim();
 
-        return text;
+        return directText;
     },
 
-    // 텔레그램 전용: 메시지 버블 노드 수집
     getMessageNodes: function(chatContainer) {
         if (!chatContainer || !chatContainer.querySelectorAll) return [];
         
-        // 시도 1: role="article" (Telegram Web 표준)
-        var nodes = chatContainer.querySelectorAll('div[role="article"]');
-        if (nodes.length > 0) return nodes;
-        
-        // 시도 2: data-message-id 속성
-        nodes = chatContainer.querySelectorAll('[data-message-id]');
-        if (nodes.length > 0) return nodes;
-        
-        // 시도 3: class 패턴 (bubble, message 등)
-        nodes = chatContainer.querySelectorAll('[class*="bubble"], [class*="message"]');
+        // 시도 1: data-message-id (가장 정확)
+        var nodes = chatContainer.querySelectorAll('[data-message-id]');
         if (nodes.length > 0) {
-            // 너무 많으면 필터링 (예: 1000개 이상은 뭔가 잘못된 것)
-            if (nodes.length < 1000) return nodes;
+            console.log('[Telegram] Found ' + nodes.length + ' messages via [data-message-id]');
+            return nodes;
         }
         
-        // 시도 4: 더 깊은 검색
-        nodes = chatContainer.querySelectorAll('div[class]');
-        // 메시지처럼 보이는 요소들만 필터링 (class가 있고 텍스트가 있는 것)
-        var filtered = [];
-        for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].innerText && nodes[i].innerText.trim().length > 0) {
-                filtered.push(nodes[i]);
-                if (filtered.length > 200) break; // 너무 많으면 멈춤
+        // 시도 2: role="article" 
+        nodes = chatContainer.querySelectorAll('div[role="article"]');
+        if (nodes.length > 0) {
+            console.log('[Telegram] Found ' + nodes.length + ' messages via role="article"');
+            return nodes;
+        }
+        
+        // 시도 3: message 클래스 패턴
+        nodes = chatContainer.querySelectorAll('[class*="Message"], [class*="message"]');
+        if (nodes.length > 5 && nodes.length < 1000) {
+            console.log('[Telegram] Found ' + nodes.length + ' messages via class pattern');
+            return nodes;
+        }
+        
+        // 시도 4: 더 광범위한 검색 (화면에 보이는 메시지 버블)
+        var allDivs = chatContainer.querySelectorAll('div[class]');
+        var messageLike = [];
+        
+        for (var i = 0; i < allDivs.length && messageLike.length < 200; i++) {
+            var div = allDivs[i];
+            var text = (div.innerText || '').trim();
+            
+            // 텍스트가 있고, 너무 길지 않고 (전체 페이지 아님), 화면에 보이는 것
+            if (text && text.length > 0 && text.length < 1000) {
+                var rect = div.getBoundingClientRect();
+                if (rect.width > 50 && rect.height > 20) {
+                    messageLike.push(div);
+                }
             }
         }
-        return filtered.length > 0 ? filtered : [];
+        
+        if (messageLike.length > 0) {
+            console.log('[Telegram] Found ' + messageLike.length + ' messages via fallback search');
+            return messageLike;
+        }
+        
+        console.warn('[Telegram] No messages found!');
+        return [];
     },
     
     identifySpeaker: function(element) {
-        let current = element;
-        let depth = 0;
+        var current = element;
+        var depth = 0;
         
         while (current && depth < 15) {
-            const className = typeof current.className === 'string' ? current.className : '';
-            if (/\b(is-out|message-out|bubble-out|out)\b/.test(className)) {
+            var className = typeof current.className === 'string' ? current.className : '';
+            if (/\b(is-out|message-out|own)\b/.test(className)) {
                 return "나 (Me)";
             }
-            if (/\b(is-in|message-in|bubble-in|in)\b/.test(className)) {
-                return "상대방 (Other)";
-            }
-            if (current.classList && current.classList.contains('message')) {
-                // message 요소 기본은 상대방으로 간주
+            if (/\b(is-in|message-in|from)\b/.test(className)) {
                 return "상대방 (Other)";
             }
             current = current.parentElement;
             depth++;
         }
         
-        // 뷰포트 기반 판별로 폴백
-        const rect = element.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const elementCenterX = rect.left + (rect.width / 2);
+        var rect = element.getBoundingClientRect();
+        var viewportWidth = window.innerWidth;
+        var elementCenterX = rect.left + (rect.width / 2);
         
         return elementCenterX > viewportWidth / 2 ? "나 (Me)" : "상대방 (Other)";
     },
     
     findNearestTime: function(element) {
-        let current = element;
-        let attempts = 0;
+        var current = element;
+        var attempts = 0;
         
         while (current && attempts < 20) {
-            const allTexts = current.querySelectorAll('div, span, time');
-            for (const node of allTexts) {
-                const text = node.innerText?.trim() || node.textContent?.trim();
+            var allTexts = current.querySelectorAll('div, span, time');
+            for (var i = 0; i < allTexts.length; i++) {
+                var node = allTexts[i];
+                var text = (node.innerText || '').trim() || (node.textContent || '').trim();
                 if (text) {
-                    const timeInfo = this.parseTimeText(text);
+                    var timeInfo = this.parseTimeText(text);
                     if (timeInfo) return timeInfo;
                 }
             }
@@ -342,35 +342,28 @@ window.MessageExtractor.Telegram = {
         return null;
     },
     
-    // 텔레그램 전용: 특정 요소에서 가장 가까운 날짜 구분선 찾기
     findNearestDateSeparator: function(element) {
-        let current = element;
-        let attempts = 0;
+        var current = element;
+        var attempts = 0;
         
-        // 상위로 올라가면서 날짜 구분선 찾기
         while (current && attempts < 30) {
-            // 형제 요소들 중에서 날짜 구분선 찾기
-            let sibling = current.previousElementSibling;
-            let siblingAttempts = 0;
+            var sibling = current.previousElementSibling;
+            var siblingAttempts = 0;
             
             while (sibling && siblingAttempts < 20) {
-                const text = (sibling.innerText || '').trim() || (sibling.textContent || '').trim();
+                var text = (sibling.innerText || '').trim() || (sibling.textContent || '').trim();
                 if (text) {
-                    const dateInfo = this.parseDateSeparator(text);
-                    if (dateInfo) {
-                        return dateInfo;
-                    }
+                    var dateInfo = this.parseDateSeparator(text);
+                    if (dateInfo) return dateInfo;
                 }
                 
-                // 하위 요소들도 확인
-                const childDivs = sibling.querySelectorAll('div, span');
-                for (const child of childDivs) {
-                    const childText = (child.innerText || '').trim() || (child.textContent || '').trim();
+                var childDivs = sibling.querySelectorAll('div, span');
+                for (var i = 0; i < childDivs.length; i++) {
+                    var child = childDivs[i];
+                    var childText = (child.innerText || '').trim() || (child.textContent || '').trim();
                     if (childText) {
-                        const dateInfo = this.parseDateSeparator(childText);
-                        if (dateInfo) {
-                            return dateInfo;
-                        }
+                        var dateInfo = this.parseDateSeparator(childText);
+                        if (dateInfo) return dateInfo;
                     }
                 }
                 
@@ -385,14 +378,12 @@ window.MessageExtractor.Telegram = {
         return null;
     },
     
-    // 텔레그램 전용: 스캔 전 날짜 구분선 수집 (사용 안 함, 제거 가능)
     preScan: function(chatContainer) {
-        // 각 메시지마다 가장 가까운 날짜를 찾으므로 preScan 불필요
+        // 필요없음
     },
     
-    // 텔레그램 전용: content 처리 및 timestamp 생성
     processContent: function(text, node) {
-        const extracted = this.extractTimeFromContent(text);
+        var extracted = this.extractTimeFromContent(text);
         
         if (!extracted) {
             return {
@@ -402,9 +393,8 @@ window.MessageExtractor.Telegram = {
             };
         }
         
-        // 가장 가까운 날짜 구분선 찾기
-        const dateInfo = this.findNearestDateSeparator(node);
-        const date = dateInfo || this.state.lastKnownDate;
+        var dateInfo = this.findNearestDateSeparator(node);
+        var date = dateInfo || this.state.lastKnownDate;
         
         if (!date) {
             return {
@@ -414,13 +404,13 @@ window.MessageExtractor.Telegram = {
             };
         }
         
-        const timeParts = extracted.time.split(':');
-        const hour = timeParts[0];
-        const minute = timeParts[1];
+        var timeParts = extracted.time.split(':');
+        var hour = timeParts[0];
+        var minute = timeParts[1];
         
-        const dateStr = `${date.year}-${date.month}-${date.day}T${hour}:${minute}:00`;
-        const timestamp = new Date(dateStr).getTime();
-        const timestampText = `${date.year.slice(2)}. ${date.month}. ${date.day}. ${extracted.time}`;
+        var dateStr = date.year + '-' + date.month + '-' + date.day + 'T' + hour + ':' + minute + ':00';
+        var timestamp = new Date(dateStr).getTime();
+        var timestampText = date.year.slice(2) + '. ' + date.month + '. ' + date.day + '. ' + extracted.time;
         
         return {
             content: extracted.content,
@@ -430,16 +420,38 @@ window.MessageExtractor.Telegram = {
     },
     
     extractUsername: function() {
-        // 할 일: 텔레그램 사용자명 추출 구현
+        if (!this.state.recipientUsername) {
+            var headerSelectors = [
+                '.chat-info .peer-title',
+                '.peer-title',
+                'header .name'
+            ];
+            
+            for (var i = 0; i < headerSelectors.length; i++) {
+                var el = document.querySelector(headerSelectors[i]);
+                if (el) {
+                    var text = (el.innerText || el.textContent || '').trim();
+                    if (text && text.length > 0 && text.length < 50) {
+                        this.state.recipientUsername = text;
+                        break;
+                    }
+                }
+            }
+        }
+        
         return {
             recipient: this.state.recipientUsername,
             me: this.state.myUsername
         };
     },
     
-    // 텔레그램 전용: 메시지 데이터 필터링 (불필요한 필드 제거)
     filterMessageData: function(data) {
-        const { id, sequence, collectedAt, ...rest } = data;
-        return rest;
+        var result = {};
+        for (var key in data) {
+            if (key !== 'id' && key !== 'sequence' && key !== 'collectedAt') {
+                result[key] = data[key];
+            }
+        }
+        return result;
     }
 };

@@ -34,15 +34,6 @@
 
         var chatContainer = document.querySelector(extractor.config.chatContainer) || document.body;
         
-        console.log('[Scan] Chat container found:', !!chatContainer, 'className:', chatContainer.className);
-        console.log('[Scan] Extractor methods available:', {
-          getMessageNodes: !!extractor.getMessageNodes,
-          getMessageText: !!extractor.getMessageText,
-          preScan: !!extractor.preScan,
-          config: !!extractor.config
-        });
-        
-        // 플랫폼별 사전 스캔 (있으면 실행)
         if (extractor.preScan) {
           extractor.preScan(chatContainer);
         }
@@ -50,25 +41,6 @@
         var textNodes = extractor.getMessageNodes
           ? extractor.getMessageNodes(chatContainer)
           : chatContainer.querySelectorAll(extractor.config.textNodes);
-
-        console.log('[Scan] Found ' + textNodes.length + ' text nodes');
-        
-        // 선택자 디버그 - 항상 실행
-        console.log('[Scan] DEBUG - Testing selectors on chatContainer:');
-        var alt1 = chatContainer.querySelectorAll('[class*="bubble"]');
-        console.log('  [class*="bubble"]: ' + alt1.length);
-        var alt2 = chatContainer.querySelectorAll('[class*="message"]');
-        console.log('  [class*="message"]: ' + alt2.length);
-        var alt3 = chatContainer.querySelectorAll('div[role="article"]');
-        console.log('  div[role="article"]: ' + alt3.length);
-        var alt4 = chatContainer.querySelectorAll('[dir="auto"]');
-        console.log('  [dir="auto"]: ' + alt4.length);
-        var alt5 = chatContainer.querySelectorAll('[class*="group"]');
-        console.log('  [class*="group"]: ' + alt5.length);
-        var alt6 = chatContainer.querySelectorAll('[data-test-id]');
-        console.log('  [data-test-id]: ' + alt6.length);
-        var alt7 = chatContainer.querySelectorAll('div[class]');
-        console.log('  div[class] (all divs with class): ' + alt7.length);
 
         textNodes.forEach(function (node) {
           var element = node;
@@ -79,30 +51,15 @@
             ? extractor.getMessageTextElement(element)
             : element;
           
-          if (!text) {
-            console.log('[Scan] Skipped: empty text');
-            return;
-          }
-          
-          if (!window.MessageExtractor.isElementInViewport(viewportTarget)) {
-            console.log('[Scan] Skipped: not in viewport');
-            return;
-          }
-          
-          if (extractor.shouldFilterOut(text)) {
-            console.log('[Scan] Skipped: filtered out - ' + text.substring(0, 30));
-            return;
-          }
+          if (!text) return;
+          if (!window.MessageExtractor.isElementInViewport(viewportTarget)) return;
+          if (extractor.shouldFilterOut(text)) return;
 
           var normalized = window.MessageExtractor.normalizeContent(text);
           var contentKey = 'TEXT_' + normalized;
 
-          if (window.PROCESSED_CONTENTS.has(contentKey)) {
-            console.log('[Scan] Skipped: already processed');
-            return;
-          }
+          if (window.PROCESSED_CONTENTS.has(contentKey)) return;
 
-          // 플랫폼별 content 처리 (있으면 사용, 없으면 원본)
           var processed = extractor.processContent ? extractor.processContent(text, node) : {
             content: text,
             timestamp: null,
@@ -123,36 +80,20 @@
             collectedAt: Date.now()
           };
 
-          // 플랫폼별 필드 필터링 (있으면 사용)
           if (extractor.filterMessageData) {
             messageData = extractor.filterMessageData(messageData);
           }
 
           window.COLLECTED_DB.set(contentKey, messageData);
-
-          console.log('[Scan] ADDED text message:', {
-            type: messageData.type,
-            sender: messageData.sender,
-            content: messageData.content.substring(0, 50)
-          });
-
           window.PROCESSED_CONTENTS.add(contentKey);
         });
 
         var images = chatContainer.querySelectorAll(extractor.config.images);
-        
-        console.log('[Scan] Found ' + images.length + ' images');
 
         images.forEach(function (img) {
           var rect = img.getBoundingClientRect();
-          if (!window.MessageExtractor.isElementInViewport(img)) {
-            console.log('[Scan] Image skipped: not in viewport');
-            return;
-          }
-          if (rect.width < 50 || rect.height < 50) {
-            console.log('[Scan] Image skipped: too small (' + rect.width + 'x' + rect.height + ')');
-            return;
-          }
+          if (!window.MessageExtractor.isElementInViewport(img)) return;
+          if (rect.width < 50 || rect.height < 50) return;
 
           var src = img.src;
           if (img.srcset) {
@@ -161,10 +102,7 @@
           }
 
           var contentKey = 'IMG_' + src;
-          if (window.PROCESSED_CONTENTS.has(contentKey)) {
-            console.log('[Scan] Image skipped: already processed');
-            return;
-          }
+          if (window.PROCESSED_CONTENTS.has(contentKey)) return;
 
           var timeInfo = extractor.findNearestTime(img);
           var counter = messageCounter++;
@@ -180,23 +118,15 @@
             collectedAt: Date.now()
           };
 
-          // 플랫폼별 필드 필터링 (있으면 사용)
           if (extractor.filterMessageData) {
             imageData = extractor.filterMessageData(imageData);
           }
 
           window.COLLECTED_DB.set(contentKey, imageData);
-
-          console.log('[Scan] ADDED image message:', {
-            type: imageData.type,
-            sender: imageData.sender,
-            content: imageData.content.substring(0, 50)
-          });
-
           window.PROCESSED_CONTENTS.add(contentKey);
         });
 
-        statusBox.innerText = '📥 ' + window.COLLECTED_DB.size + ' messages';
+        statusBox.innerText = '🔥 ' + window.COLLECTED_DB.size + ' messages';
 
         var now = Date.now();
         if (now - lastTablePrint > 3000) {
@@ -223,16 +153,11 @@
     function findSelectableNode(target) {
       if (!target) return { node: null, type: null };
 
-      // 1단계: 클릭한 요소 자체가 텍스트/이미지인지 확인
-      if (target.closest) {
+      // 1단계: closest로 직접 텍스트 노드 찾기 (이미지 체크 제외)
+      if (target.closest && !target.closest('img')) {
         var directText = target.closest(extractor.config.textNodes);
-        if (directText && directText.innerText?.trim()) {
+        if (directText && directText.innerText && directText.innerText.trim()) {
           return { node: directText, type: 'text' };
-        }
-
-        var directImage = target.closest(extractor.config.images);
-        if (directImage) {
-          return { node: directImage, type: 'image' };
         }
       }
 
@@ -242,11 +167,37 @@
       var maxAttempts = 15;
 
       while (current && attempts < maxAttempts) {
-        // 텍스트 먼저 찾기 (텍스트 우선)
+        // 텔레그램 전용: 메시지 노드를 먼저 찾기
+        if (extractor.platform === 'telegram') {
+          // data-message-id를 가진 부모 찾기
+          if (current.hasAttribute && current.hasAttribute('data-message-id')) {
+            var text = extractor.getMessageText ? extractor.getMessageText(current) : '';
+            if (text && text.trim()) {
+              return { node: current, type: 'text' };
+            }
+          }
+          
+          // 또는 Message 클래스를 가진 부모
+          var className = typeof current.className === 'string' ? current.className : '';
+          if (/message/i.test(className)) {
+            var text = extractor.getMessageText ? extractor.getMessageText(current) : '';
+            if (text && text.trim()) {
+              return { node: current, type: 'text' };
+            }
+          }
+        }
+        
+        // 기존 방식: querySelector로 텍스트 찾기
         if (current.querySelector) {
           var nestedText = current.querySelector(extractor.config.textNodes);
-          if (nestedText && (nestedText.innerText?.trim() || nestedText.textContent?.trim())) {
-            return { node: nestedText, type: 'text' };
+          if (nestedText) {
+            var text = extractor.getMessageText
+              ? extractor.getMessageText(nestedText)
+              : (nestedText.innerText && nestedText.innerText.trim() || nestedText.textContent && nestedText.textContent.trim());
+            
+            if (text) {
+              return { node: nestedText, type: 'text' };
+            }
           }
         }
 
@@ -254,7 +205,16 @@
         attempts++;
       }
 
-      // 3단계: 이미지 찾기 (최후의 수단)
+      // 3단계: 이미지 찾기 (최후의 수단) - 직접 이미지를 클릭한 경우만
+      if (target.tagName === 'IMG') {
+        return { node: target, type: 'image' };
+      }
+      
+      var directImage = target.closest ? target.closest(extractor.config.images) : null;
+      if (directImage) {
+        return { node: directImage, type: 'image' };
+      }
+
       current = target;
       attempts = 0;
       while (current && attempts < maxAttempts) {
@@ -279,7 +239,6 @@
         content = (node.innerText || '').trim() || (node.textContent || '').trim();
         if (!content) return null;
         
-        // 플랫폼별 content 처리 (텔레그램: 시간 제거)
         if (extractor.processContent) {
           var processed = extractor.processContent(content, node);
           content = processed.content;
@@ -326,7 +285,7 @@
       }
     }, true);
 
-    var scannerInterval = setInterval(scanScreen, 500);
+    var scannerInterval = setInterval(scanScreen, 5000);
 
     window.showData = function () {
       var data = Array.from(window.COLLECTED_DB.values());
@@ -334,15 +293,6 @@
 
       console.log('\n========== 📊 COLLECTED MESSAGES ==========');
       console.log('Total: ' + data.length + ' messages');
-      data.forEach(function(msg, index) {
-        console.log('\n[Message ' + (index + 1) + ']');
-        console.log('  Type: ' + msg.type);
-        console.log('  Sender: ' + msg.sender);
-        console.log('  Content: ' + (msg.content.substring(0, 100) || '(empty)'));
-        console.log('  Timestamp: ' + (msg.timestampText || 'N/A'));
-      });
-      console.log('\n========== END ==========\n');
-      
       if (data.length > 0) {
         console.table(data);
       } else {
@@ -369,19 +319,52 @@
 
       console.log('\nStatistics:');
       console.log('Total: ' + stats.total);
-      console.log('My messages: ' + stats.myMessages + ' (' + (stats.myMessages / stats.total * 100).toFixed(1) + '%)');
-      console.log('Other messages: ' + stats.otherMessages + ' (' + (stats.otherMessages / stats.total * 100).toFixed(1) + '%)');
+      console.log('My messages: ' + stats.myMessages);
+      console.log('Other messages: ' + stats.otherMessages);
       console.log('Text: ' + stats.textMessages);
       console.log('Images: ' + stats.imageMessages);
-      console.log('With timestamp: ' + stats.withTimestamp);
-      console.log('Without timestamp: ' + stats.withoutTimestamp);
-      console.log('\nAll Messages (Latest First):');
       console.table(data);
 
       return data;
     };
 
+    // API로 분석 요청
+    window.analyzeMessages = function() {
+      var data = Array.from(window.COLLECTED_DB.values());
+      data = window.MessageExtractor.sortMessages(data);
+
+      if (data.length === 0) {
+        console.error('[API] No messages to analyze');
+        return;
+      }
+
+      console.log('[API] Sending ' + data.length + ' messages for analysis...');
+
+      window.postMessage({
+        source: 'dm-collector',
+        type: 'ANALYZE_MESSAGES',
+        payload: {
+          messages: data,
+          sourceUrl: window.location.href
+        }
+      }, '*');
+
+      statusBox.innerText = '🔄 Analyzing...';
+      statusBox.style.backgroundColor = '#f39c12';
+    };
+
+    // API 헬스 체크
+    window.checkApiHealth = function() {
+      console.log('[API] Checking API health...');
+      
+      window.postMessage({
+        source: 'dm-collector',
+        type: 'CHECK_API_HEALTH'
+      }, '*');
+    };
+
     console.log('[Extractor] Initialized successfully');
+    console.log('[Commands] window.showData() | window.stopAndExport() | window.analyzeMessages() | window.checkApiHealth()');
   } catch (error) {
     console.error('[Extractor Init Error]', error);
   }

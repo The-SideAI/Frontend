@@ -13,6 +13,8 @@ declare global {
     PROCESSED_CONTENTS: Set<string>;
     showData: () => MessageRecord[];
     stopAndExport: () => MessageRecord[];
+    analyzeMessages: () => void;
+    checkApiHealth: () => void;
   }
 }
 
@@ -45,6 +47,7 @@ export default defineContentScript({
     }
 
     console.log(`[Extractor] Detected platform: ${platform}`);
+    void browser.storage.local.set({ currentPlatform: platform });
 
     const commonScript = document.createElement('script');
     commonScript.src = browser.runtime.getURL("/utils/common.js" as PublicPath);
@@ -82,6 +85,8 @@ export default defineContentScript({
       return payload.type === "image" ? "[이미지]" : payload.content;
     };
 
+    let conversationStartLabel: string | null = null;
+
     const applySelection = async (payload: {
       type: "text" | "image";
       content: string;
@@ -89,37 +94,132 @@ export default defineContentScript({
       timestamp: number | null;
       timestampText: string | null;
     }) => {
-      const stored = await browser.storage.local.get([
-        "conversationStart",
-        "conversationEnd",
-      ]);
-
       const label = buildSelectionLabel({
         type: payload.type,
         content: payload.content,
       });
 
       const updates: Record<string, string> = {};
-      if (!stored.conversationStart) {
+      if (!conversationStartLabel) {
+        conversationStartLabel = label;
         updates.conversationStart = label;
       } else {
         updates.conversationEnd = label;
       }
 
-      await browser.storage.local.set(updates);
       await browser.runtime.sendMessage({
         type: "SELECTION_UPDATED",
         ...updates,
       });
     };
 
+    type AnalyzeMessagesRequest = {
+      type: "ANALYZE_MESSAGES";
+      payload: {
+        messages: MessageRecord[];
+        sourceUrl: string;
+      };
+    };
+
+    type CheckHealthRequest = {
+      type: "CHECK_API_HEALTH";
+    };
+
+    type ApiRequest = AnalyzeMessagesRequest | CheckHealthRequest;
+
+    // API 요청 처리
+    const handleApiRequest = async (data: ApiRequest) => {
+      if (data.type === "ANALYZE_MESSAGES") {
+        try {
+          console.log('[Content] Forwarding analysis request to background');
+          const response = await browser.runtime.sendMessage({
+            type: "ANALYZE_MESSAGES",
+            payload: data.payload
+          });
+
+          console.log('[Content] Background response:', response);
+
+          if (response && response.success) {
+            console.log('[Content] Analysis result:', response.result);
+            
+            // 결과를 페이지로 전송
+            window.postMessage({
+              source: SOURCE,
+              type: "ANALYSIS_RESULT",
+              payload: response.result
+            }, '*');
+          } else {
+            console.error('[Content] Analysis failed:', response?.error);
+            console.error('[Content] Full response:', response);
+          }
+        } catch (error: unknown) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.error('[Content] API request failed:', err);
+          console.error('[Content] Error details:', {
+            name: err.name,
+            message: err.message,
+            stack: err.stack
+          });
+        }
+      } else if (data.type === "CHECK_API_HEALTH") {
+        try {
+          console.log('[Content] Checking API health');
+          const response = await browser.runtime.sendMessage({
+            type: "CHECK_API_HEALTH"
+          });
+
+          console.log('[Content] Health check response:', response);
+
+          if (response && response.success) {
+            console.log('[Content] API Health: ✅', response.health);
+          } else {
+            console.error('[Content] Health check failed: ❌', response?.error);
+            console.error('[Content] Full response:', response);
+          }
+        } catch (error: unknown) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.error('[Content] Health check failed:', err);
+          console.error('[Content] Error details:', {
+            name: err.name,
+            message: err.message
+          });
+        }
+      }
+    };
+
     window.addEventListener("message", (event) => {
       if (event.source !== window) return;
       const data = event.data;
-      if (!data || data.source !== SOURCE || data.type !== "MESSAGE_BUBBLE_SELECTED") return;
-      void applySelection(data.payload);
+      if (!data || data.source !== SOURCE) return;
+
+      // 버블 선택 처리
+      if (data.type === "MESSAGE_BUBBLE_SELECTED") {
+        void applySelection(data.payload);
+      }
+
+      // API 요청 처리
+      if (data.type === "ANALYZE_MESSAGES" || data.type === "CHECK_API_HEALTH") {
+        void handleApiRequest(data as ApiRequest);
+      }
     });
 
-    // 초기화는 public/inject-init.js에서 수행
+    // 백그라운드에서 온 분석 결과 처리
+    browser.runtime.onMessage.addListener((message) => {
+      if (message.type === "RESET_SELECTIONS") {
+        conversationStartLabel = null;
+        return;
+      }
+
+      if (message.type === "ANALYSIS_RESULT") {
+        console.log('[Content] Received analysis result:', message.payload);
+        
+        // 결과를 페이지로 전달
+        window.postMessage({
+          source: SOURCE,
+          type: "ANALYSIS_RESULT",
+          payload: message.payload
+        }, '*');
+      }
+    });
   },
 });

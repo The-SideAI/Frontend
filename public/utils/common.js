@@ -27,6 +27,7 @@ window.MessageExtractor.createStatusBox = function(platform) {
     statusBox.style.borderRadius = '8px';
     statusBox.style.zIndex = '99999';
     statusBox.style.fontSize = '14px';
+    statusBox.style.display = 'none';
     statusBox.innerText = `🔴 ${platform} scanner`;
     document.body.appendChild(statusBox);
     return statusBox;
