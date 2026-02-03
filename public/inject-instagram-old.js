@@ -413,11 +413,11 @@
             return b.sequence - a.sequence;
         });
         
-        console.log(`[Collected] ${data.length} messages`);
+        //console.log(`[Collected] ${data.length} messages`);
         if (data.length > 0) {
             console.table(data);
         } else {
-            console.log("[Data] No messages collected yet");
+            //console.log("[Data] No messages collected yet");
         }
         return data;
     };
@@ -451,23 +451,23 @@
             withoutTimestamp: data.filter(m => !m.timestamp).length
         };
 
-        console.log("\n=== Collection Complete ===\n");
+        //console.log("\n=== Collection Complete ===\n");
         if (recipientUsername) {
-            console.log(`Recipient: ${recipientUsername}`);
+            //console.log(`Recipient: ${recipientUsername}`);
         }
         if (myUsername) {
-            console.log(`Me: ${myUsername}`);
+            //console.log(`Me: ${myUsername}`);
         }
         
-        console.log("\nStatistics:");
-        console.log(`Total: ${stats.total}`);
-        console.log(`My messages: ${stats.myMessages} (${(stats.myMessages/stats.total*100).toFixed(1)}%)`);
-        console.log(`Other messages: ${stats.otherMessages} (${(stats.otherMessages/stats.total*100).toFixed(1)}%)`);
-        console.log(`Text: ${stats.textMessages}`);
-        console.log(`Images: ${stats.imageMessages}`);
-        console.log(`With timestamp: ${stats.withTimestamp}`);
-        console.log(`Without timestamp: ${stats.withoutTimestamp}`);
-        console.log("\nAll Messages (Latest First):");
+        //console.log("\nStatistics:");
+        //console.log(`Total: ${stats.total}`);
+        //console.log(`My messages: ${stats.myMessages} (${(stats.myMessages/stats.total*100).toFixed(1)}%)`);
+        //console.log(`Other messages: ${stats.otherMessages} (${(stats.otherMessages/stats.total*100).toFixed(1)}%)`);
+        //console.log(`Text: ${stats.textMessages}`);
+        //console.log(`Images: ${stats.imageMessages}`);
+        //console.log(`With timestamp: ${stats.withTimestamp}`);
+        //console.log(`Without timestamp: ${stats.withoutTimestamp}`);
+        //console.log("\nAll Messages (Latest First):");
         console.table(data);
         
         return data;

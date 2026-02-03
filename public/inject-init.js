@@ -34,17 +34,25 @@
 
         var chatContainer = document.querySelector(extractor.config.chatContainer) || document.body;
         
-        // 플랫폼별 사전 스캔 (있으면 실행)
         if (extractor.preScan) {
           extractor.preScan(chatContainer);
         }
         
-        var textNodes = chatContainer.querySelectorAll(extractor.config.textNodes);
+        var textNodes = extractor.getMessageNodes
+          ? extractor.getMessageNodes(chatContainer)
+          : chatContainer.querySelectorAll(extractor.config.textNodes);
 
         textNodes.forEach(function (node) {
           var element = node;
-          var text = (element.innerText || '').trim() || (element.textContent || '').trim();
-          if (!text || !window.MessageExtractor.isElementInViewport(node)) return;
+          var text = extractor.getMessageText
+            ? extractor.getMessageText(element)
+            : (element.innerText || '').trim() || (element.textContent || '').trim();
+          var viewportTarget = extractor.getMessageTextElement
+            ? extractor.getMessageTextElement(element)
+            : element;
+          
+          if (!text) return;
+          if (!window.MessageExtractor.isElementInViewport(viewportTarget)) return;
           if (extractor.shouldFilterOut(text)) return;
 
           var normalized = window.MessageExtractor.normalizeContent(text);
@@ -52,7 +60,6 @@
 
           if (window.PROCESSED_CONTENTS.has(contentKey)) return;
 
-          // 플랫폼별 content 처리 (있으면 사용, 없으면 원본)
           var processed = extractor.processContent ? extractor.processContent(text, node) : {
             content: text,
             timestamp: null,
@@ -73,17 +80,16 @@
             collectedAt: Date.now()
           };
 
-          // 플랫폼별 필드 필터링 (있으면 사용)
           if (extractor.filterMessageData) {
             messageData = extractor.filterMessageData(messageData);
           }
 
           window.COLLECTED_DB.set(contentKey, messageData);
-
           window.PROCESSED_CONTENTS.add(contentKey);
         });
 
         var images = chatContainer.querySelectorAll(extractor.config.images);
+
         images.forEach(function (img) {
           var rect = img.getBoundingClientRect();
           if (!window.MessageExtractor.isElementInViewport(img)) return;
@@ -112,17 +118,15 @@
             collectedAt: Date.now()
           };
 
-          // 플랫폼별 필드 필터링 (있으면 사용)
           if (extractor.filterMessageData) {
             imageData = extractor.filterMessageData(imageData);
           }
 
           window.COLLECTED_DB.set(contentKey, imageData);
-
           window.PROCESSED_CONTENTS.add(contentKey);
         });
 
-        statusBox.innerText = '📥 ' + window.COLLECTED_DB.size + ' messages';
+        statusBox.innerText = '🔥 ' + window.COLLECTED_DB.size + ' messages';
 
         var now = Date.now();
         if (now - lastTablePrint > 3000) {
@@ -149,23 +153,76 @@
     function findSelectableNode(target) {
       if (!target) return { node: null, type: null };
 
-      if (target.closest) {
+      // 1단계: closest로 직접 텍스트 노드 찾기 (이미지 체크 제외)
+      if (target.closest && !target.closest('img')) {
         var directText = target.closest(extractor.config.textNodes);
-        if (directText) return { node: directText, type: 'text' };
-
-        var directImage = target.closest(extractor.config.images);
-        if (directImage) return { node: directImage, type: 'image' };
+        if (directText && directText.innerText && directText.innerText.trim()) {
+          return { node: directText, type: 'text' };
+        }
       }
 
+      // 2단계: 부모 요소들을 순회하면서 메시지 버블 찾기
       var current = target;
       var attempts = 0;
-      while (current && attempts < 10) {
+      var maxAttempts = 15;
+
+      while (current && attempts < maxAttempts) {
+        // 텔레그램 전용: 메시지 노드를 먼저 찾기
+        if (extractor.platform === 'telegram') {
+          // data-message-id를 가진 부모 찾기
+          if (current.hasAttribute && current.hasAttribute('data-message-id')) {
+            var text = extractor.getMessageText ? extractor.getMessageText(current) : '';
+            if (text && text.trim()) {
+              return { node: current, type: 'text' };
+            }
+          }
+          
+          // 또는 Message 클래스를 가진 부모
+          var className = typeof current.className === 'string' ? current.className : '';
+          if (/message/i.test(className)) {
+            var text = extractor.getMessageText ? extractor.getMessageText(current) : '';
+            if (text && text.trim()) {
+              return { node: current, type: 'text' };
+            }
+          }
+        }
+        
+        // 기존 방식: querySelector로 텍스트 찾기
         if (current.querySelector) {
           var nestedText = current.querySelector(extractor.config.textNodes);
-          if (nestedText) return { node: nestedText, type: 'text' };
+          if (nestedText) {
+            var text = extractor.getMessageText
+              ? extractor.getMessageText(nestedText)
+              : (nestedText.innerText && nestedText.innerText.trim() || nestedText.textContent && nestedText.textContent.trim());
+            
+            if (text) {
+              return { node: nestedText, type: 'text' };
+            }
+          }
+        }
 
+        current = current.parentElement;
+        attempts++;
+      }
+
+      // 3단계: 이미지 찾기 (최후의 수단) - 직접 이미지를 클릭한 경우만
+      if (target.tagName === 'IMG') {
+        return { node: target, type: 'image' };
+      }
+      
+      var directImage = target.closest ? target.closest(extractor.config.images) : null;
+      if (directImage) {
+        return { node: directImage, type: 'image' };
+      }
+
+      current = target;
+      attempts = 0;
+      while (current && attempts < maxAttempts) {
+        if (current.querySelector) {
           var nestedImage = current.querySelector(extractor.config.images);
-          if (nestedImage) return { node: nestedImage, type: 'image' };
+          if (nestedImage) {
+            return { node: nestedImage, type: 'image' };
+          }
         }
         current = current.parentElement;
         attempts++;
@@ -182,14 +239,15 @@
         content = (node.innerText || '').trim() || (node.textContent || '').trim();
         if (!content) return null;
         
-        // 플랫폼별 content 처리 (텔레그램: 시간 제거)
         if (extractor.processContent) {
           var processed = extractor.processContent(content, node);
           content = processed.content;
         }
-      } else {
+      } else if (type === 'image') {
         content = getImageSrc(node);
         if (!content) return null;
+      } else {
+        return null;
       }
 
       return {
@@ -227,13 +285,14 @@
       }
     }, true);
 
-    var scannerInterval = setInterval(scanScreen, 500);
+    var scannerInterval = setInterval(scanScreen, 5000);
 
     window.showData = function () {
       var data = Array.from(window.COLLECTED_DB.values());
       data = window.MessageExtractor.sortMessages(data);
 
-      console.log('[Collected] ' + data.length + ' messages');
+      console.log('\n========== 📊 COLLECTED MESSAGES ==========');
+      console.log('Total: ' + data.length + ' messages');
       if (data.length > 0) {
         console.table(data);
       } else {
@@ -260,19 +319,52 @@
 
       console.log('\nStatistics:');
       console.log('Total: ' + stats.total);
-      console.log('My messages: ' + stats.myMessages + ' (' + (stats.myMessages / stats.total * 100).toFixed(1) + '%)');
-      console.log('Other messages: ' + stats.otherMessages + ' (' + (stats.otherMessages / stats.total * 100).toFixed(1) + '%)');
+      console.log('My messages: ' + stats.myMessages);
+      console.log('Other messages: ' + stats.otherMessages);
       console.log('Text: ' + stats.textMessages);
       console.log('Images: ' + stats.imageMessages);
-      console.log('With timestamp: ' + stats.withTimestamp);
-      console.log('Without timestamp: ' + stats.withoutTimestamp);
-      console.log('\nAll Messages (Latest First):');
       console.table(data);
 
       return data;
     };
 
+    // API로 분석 요청
+    window.analyzeMessages = function() {
+      var data = Array.from(window.COLLECTED_DB.values());
+      data = window.MessageExtractor.sortMessages(data);
+
+      if (data.length === 0) {
+        console.error('[API] No messages to analyze');
+        return;
+      }
+
+      console.log('[API] Sending ' + data.length + ' messages for analysis...');
+
+      window.postMessage({
+        source: 'dm-collector',
+        type: 'ANALYZE_MESSAGES',
+        payload: {
+          messages: data,
+          sourceUrl: window.location.href
+        }
+      }, '*');
+
+      statusBox.innerText = '🔄 Analyzing...';
+      statusBox.style.backgroundColor = '#f39c12';
+    };
+
+    // API 헬스 체크
+    window.checkApiHealth = function() {
+      console.log('[API] Checking API health...');
+      
+      window.postMessage({
+        source: 'dm-collector',
+        type: 'CHECK_API_HEALTH'
+      }, '*');
+    };
+
     console.log('[Extractor] Initialized successfully');
+    console.log('[Commands] window.showData() | window.stopAndExport() | window.analyzeMessages() | window.checkApiHealth()');
   } catch (error) {
     console.error('[Extractor Init Error]', error);
   }
