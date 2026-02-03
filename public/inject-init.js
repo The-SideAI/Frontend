@@ -33,6 +33,12 @@
         extractor.extractUsername();
 
         var chatContainer = document.querySelector(extractor.config.chatContainer) || document.body;
+        
+        // 플랫폼별 사전 스캔 (있으면 실행)
+        if (extractor.preScan) {
+          extractor.preScan(chatContainer);
+        }
+        
         var textNodes = chatContainer.querySelectorAll(extractor.config.textNodes);
 
         textNodes.forEach(function (node) {
@@ -46,19 +52,33 @@
 
           if (window.PROCESSED_CONTENTS.has(contentKey)) return;
 
+          // 플랫폼별 content 처리 (있으면 사용, 없으면 원본)
+          var processed = extractor.processContent ? extractor.processContent(text, node) : {
+            content: text,
+            timestamp: null,
+            timestampText: null
+          };
+          
           var timeInfo = extractor.findNearestTime(node);
           var counter = messageCounter++;
 
-          window.COLLECTED_DB.set(contentKey, {
+          var messageData = {
             id: 'msg_' + counter,
             type: 'text',
             sender: extractor.identifySpeaker(node),
-            content: text,
-            timestamp: (timeInfo && timeInfo.timestamp) || null,
-            timestampText: (timeInfo && timeInfo.text) || null,
+            content: processed.content,
+            timestamp: processed.timestamp || (timeInfo && timeInfo.timestamp) || null,
+            timestampText: processed.timestampText || (timeInfo && timeInfo.text) || null,
             sequence: counter,
             collectedAt: Date.now()
-          });
+          };
+
+          // 플랫폼별 필드 필터링 (있으면 사용)
+          if (extractor.filterMessageData) {
+            messageData = extractor.filterMessageData(messageData);
+          }
+
+          window.COLLECTED_DB.set(contentKey, messageData);
 
           window.PROCESSED_CONTENTS.add(contentKey);
         });
@@ -81,7 +101,7 @@
           var timeInfo = extractor.findNearestTime(img);
           var counter = messageCounter++;
 
-          window.COLLECTED_DB.set(contentKey, {
+          var imageData = {
             id: 'msg_' + counter,
             type: 'image',
             sender: extractor.identifySpeaker(img),
@@ -90,7 +110,14 @@
             timestampText: (timeInfo && timeInfo.text) || null,
             sequence: counter,
             collectedAt: Date.now()
-          });
+          };
+
+          // 플랫폼별 필드 필터링 (있으면 사용)
+          if (extractor.filterMessageData) {
+            imageData = extractor.filterMessageData(imageData);
+          }
+
+          window.COLLECTED_DB.set(contentKey, imageData);
 
           window.PROCESSED_CONTENTS.add(contentKey);
         });
@@ -154,6 +181,12 @@
       if (type === 'text') {
         content = (node.innerText || '').trim() || (node.textContent || '').trim();
         if (!content) return null;
+        
+        // 플랫폼별 content 처리 (텔레그램: 시간 제거)
+        if (extractor.processContent) {
+          var processed = extractor.processContent(content, node);
+          content = processed.content;
+        }
       } else {
         content = getImageSrc(node);
         if (!content) return null;

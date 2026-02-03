@@ -13,16 +13,162 @@ window.MessageExtractor.Telegram = {
     
     state: {
         recipientUsername: null,
-        myUsername: null
+        myUsername: null,
+        lastKnownDate: null
     },
     
     init: function() {
-        // 필요 시 텔레그램 초기화 처리
+        const today = new Date();
+        this.state.lastKnownDate = {
+            year: today.getFullYear().toString(),
+            month: String(today.getMonth() + 1).padStart(2, '0'),
+            day: String(today.getDate()).padStart(2, '0')
+        };
+    },
+    
+    // content 끝의 시간 파싱 (예: "하이\n22:10" -> {time: "22:10", content: "하이"})
+    extractTimeFromContent: function(content) {
+        if (!content) return null;
+        
+        // content 끝의 시간 패턴 추출 (HH:MM)
+        const timePattern = /\n(\d{1,2}):(\d{2})$/;
+        const match = content.match(timePattern);
+        
+        if (match) {
+            const hour = match[1].padStart(2, '0');
+            const minute = match[2];
+            const cleanContent = content.substring(0, match.index);
+            
+            return {
+                time: `${hour}:${minute}`,
+                content: cleanContent
+            };
+        }
+        
+        return null;
+    },
+    
+    // 날짜 구분선 파싱 (예: "Saturday", "Friday", "Today", "Yesterday")
+    parseDateSeparator: function(text) {
+        if (!text) return null;
+        
+        const trimmed = text.trim();
+        const today = new Date();
+        
+        // "Today" 패턴
+        if (/^(Today|오늘)$/i.test(trimmed)) {
+            const year = today.getFullYear().toString();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        // "Yesterday" 패턴
+        if (/^(Yesterday|어제)$/i.test(trimmed)) {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const year = yesterday.getFullYear().toString();
+            const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+            const day = String(yesterday.getDate()).padStart(2, '0');
+            
+            console.log('[날짜 파싱 성공 - Yesterday]', trimmed, '→', { year, month, day });
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        // 요일 패턴: "Monday", "Tuesday", etc.
+        const weekdayPattern = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|월요일|화요일|수요일|목요일|금요일|토요일|일요일)$/i;
+        if (weekdayPattern.test(trimmed)) {
+            const weekdays = {
+                'monday': 1, '월요일': 1,
+                'tuesday': 2, '화요일': 2,
+                'wednesday': 3, '수요일': 3,
+                'thursday': 4, '목요일': 4,
+                'friday': 5, '금요일': 5,
+                'saturday': 6, '토요일': 6,
+                'sunday': 0, '일요일': 0
+            };
+            
+            const targetDay = weekdays[trimmed.toLowerCase()];
+            const currentDay = today.getDay();
+            
+            // 이번 주 또는 지난 주의 해당 요일 찾기 (과거 날짜)
+            let daysAgo = currentDay - targetDay;
+            if (daysAgo <= 0) daysAgo += 7; // 지난 주로 이동
+            
+            const targetDate = new Date(today);
+            targetDate.setDate(targetDate.getDate() - daysAgo);
+            
+            const year = targetDate.getFullYear().toString();
+            const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const day = String(targetDate.getDate()).padStart(2, '0');
+            
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        // 한국어 패턴: "2월 1일", "12월 31일"
+        const koreanPattern = /^(\d{1,2})월\s*(\d{1,2})일$/;
+        const koreanMatch = trimmed.match(koreanPattern);
+        if (koreanMatch) {
+            const month = koreanMatch[1].padStart(2, '0');
+            const day = koreanMatch[2].padStart(2, '0');
+            const year = today.getFullYear().toString();
+            
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        // 영어 패턴: "January 31", "Feb 1"
+        const englishPattern = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})$/i;
+        const englishMatch = trimmed.match(englishPattern);
+        if (englishMatch) {
+            const monthNames = {
+                'january': '01', 'jan': '01',
+                'february': '02', 'feb': '02',
+                'march': '03', 'mar': '03',
+                'april': '04', 'apr': '04',
+                'may': '05',
+                'june': '06', 'jun': '06',
+                'july': '07', 'jul': '07',
+                'august': '08', 'aug': '08',
+                'september': '09', 'sep': '09',
+                'october': '10', 'oct': '10',
+                'november': '11', 'nov': '11',
+                'december': '12', 'dec': '12'
+            };
+            const month = monthNames[englishMatch[1].toLowerCase()];
+            const day = englishMatch[2].padStart(2, '0');
+            const year = today.getFullYear().toString();
+            
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        // YYYY. M. D. 패턴
+        const dotPattern = /^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?$/;
+        const dotMatch = trimmed.match(dotPattern);
+        if (dotMatch) {
+            const year = dotMatch[1];
+            const month = dotMatch[2].padStart(2, '0');
+            const day = dotMatch[3].padStart(2, '0');
+            
+            this.state.lastKnownDate = { year, month, day };
+            return { year, month, day };
+        }
+        
+        return null;
     },
     
     parseTimeText: function(text) {
-        // 할 일: 텔레그램 시간 파싱 구현
-        // 텔레그램은 다른 시간 포맷 사용
+        // 날짜 구분선 체크
+        const dateInfo = this.parseDateSeparator(text);
+        if (dateInfo) {
+            return null; // 날짜 구분선은 메시지가 아님
+        }
+        
         return null;
     },
     
@@ -31,7 +177,10 @@ window.MessageExtractor.Telegram = {
         const trimmed = text.trim();
         
         // 기본 필터링
-        if (trimmed.length === 1) return true;
+        if (trimmed.length === 1 && trimmed !== '.') return true;
+        
+        // 날짜 구분선 필터링
+        if (this.parseDateSeparator(trimmed)) return true;
         
         return false;
     },
@@ -77,11 +226,104 @@ window.MessageExtractor.Telegram = {
         return null;
     },
     
+    // 텔레그램 전용: 특정 요소에서 가장 가까운 날짜 구분선 찾기
+    findNearestDateSeparator: function(element) {
+        let current = element;
+        let attempts = 0;
+        
+        // 상위로 올라가면서 날짜 구분선 찾기
+        while (current && attempts < 30) {
+            // 형제 요소들 중에서 날짜 구분선 찾기
+            let sibling = current.previousElementSibling;
+            let siblingAttempts = 0;
+            
+            while (sibling && siblingAttempts < 20) {
+                const text = (sibling.innerText || '').trim() || (sibling.textContent || '').trim();
+                if (text) {
+                    const dateInfo = this.parseDateSeparator(text);
+                    if (dateInfo) {
+                        return dateInfo;
+                    }
+                }
+                
+                // 하위 요소들도 확인
+                const childDivs = sibling.querySelectorAll('div, span');
+                for (const child of childDivs) {
+                    const childText = (child.innerText || '').trim() || (child.textContent || '').trim();
+                    if (childText) {
+                        const dateInfo = this.parseDateSeparator(childText);
+                        if (dateInfo) {
+                            return dateInfo;
+                        }
+                    }
+                }
+                
+                sibling = sibling.previousElementSibling;
+                siblingAttempts++;
+            }
+            
+            current = current.parentElement;
+            attempts++;
+        }
+        
+        return null;
+    },
+    
+    // 텔레그램 전용: 스캔 전 날짜 구분선 수집 (사용 안 함, 제거 가능)
+    preScan: function(chatContainer) {
+        // 각 메시지마다 가장 가까운 날짜를 찾으므로 preScan 불필요
+    },
+    
+    // 텔레그램 전용: content 처리 및 timestamp 생성
+    processContent: function(text, node) {
+        const extracted = this.extractTimeFromContent(text);
+        
+        if (!extracted) {
+            return {
+                content: text,
+                timestamp: null,
+                timestampText: null
+            };
+        }
+        
+        // 가장 가까운 날짜 구분선 찾기
+        const dateInfo = this.findNearestDateSeparator(node);
+        const date = dateInfo || this.state.lastKnownDate;
+        
+        if (!date) {
+            return {
+                content: extracted.content,
+                timestamp: null,
+                timestampText: null
+            };
+        }
+        
+        const timeParts = extracted.time.split(':');
+        const hour = timeParts[0];
+        const minute = timeParts[1];
+        
+        const dateStr = `${date.year}-${date.month}-${date.day}T${hour}:${minute}:00`;
+        const timestamp = new Date(dateStr).getTime();
+        const timestampText = `${date.year.slice(2)}. ${date.month}. ${date.day}. ${extracted.time}`;
+        
+        return {
+            content: extracted.content,
+            timestamp: timestamp,
+            timestampText: timestampText
+        };
+    },
+    
     extractUsername: function() {
         // 할 일: 텔레그램 사용자명 추출 구현
         return {
             recipient: this.state.recipientUsername,
             me: this.state.myUsername
         };
+    },
+    
+    // 텔레그램 전용: 메시지 데이터 필터링 (불필요한 필드 제거)
+    filterMessageData: function(data) {
+        const { id, sequence, collectedAt, ...rest } = data;
+        return rest;
     }
 };
