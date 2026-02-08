@@ -4,7 +4,7 @@ import { CustomSelect } from "./CustomSelect";
 import { CustomDateTime } from "./CustomDateTime";
 import "./App.css";
 
-type Step = "permission" | "denied" | "category" | "mode" | "conversation" | "purpose" | "analyzing" | "result" | "monitoring";
+type Step = "login" | "loginForm" | "permission" | "denied" | "category" | "mode" | "conversation" | "purpose" | "analyzing" | "result" | "monitoring";
 
 interface FormData {
   hasPermission: boolean;
@@ -35,6 +35,7 @@ interface AnalyzeRequest {
   uuid: string;
   messages: Message[];
   platform: string;
+  type: string;
 }
 
 interface ReasonItem {
@@ -52,9 +53,11 @@ interface AnalysisResult {
 }
 
 function App() {
-  const [step, setStep] = useState<Step>("permission");
+  const [step, setStep] = useState<Step>("login");
+  const [loginEmail, setLoginEmail] = useState<string>("");
+  const [loginPassword, setLoginPassword] = useState<string>("");
   const [formData, setFormData] = useState<FormData>({
-    hasPermission: false,
+    hasPermission: true,
     category: "",
     mode: "",
     selectionMode: "message",
@@ -99,13 +102,15 @@ function App() {
   // API 분석 함수
   const analyzeMessages = async (
     messages: Message[],
-    platform: string
+    platform: string,
+    type: string
   ) => {
     const uuid = crypto.randomUUID();
     const payload: AnalyzeRequest = {
       uuid,
       messages,
       platform,
+      type,
     };
 
     //console.log('\n========== 📤 API REQUEST ==========');
@@ -155,6 +160,12 @@ function App() {
     } catch (error) {
       console.error("API 호출 실패:", error);
       throw error;
+    }
+  };
+
+  const handleLoginKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleLoginSubmit();
     }
   };
 
@@ -280,7 +291,7 @@ function App() {
     };
 
     const fetchMonitoring = () => {
-      analyzeMessages(buildMonitoringMessages(), platform)
+      analyzeMessages(buildMonitoringMessages(), platform, formData.category)
         .then((result) => {
           setMonitoringResult(result);
         })
@@ -324,9 +335,34 @@ function App() {
     };
   }, [step, monitoringResult?.recommendedQuestions]);
 
-  // 1단계: 권한 요청
+  // 로그인 단계
+  const handleLoginYes = () => {
+    setStep("loginForm");
+  };
+
+  const handleLoginNo = () => {
+    setStep("permission");
+  };
+
+  // 로그인 폼 제출
+  const handleLoginSubmit = () => {
+    if (loginEmail.trim() && loginPassword.trim()) {
+      // 아무 문자열이나 입력해도 무조건 로그인 성공
+      setLoginEmail("");
+      setLoginPassword("");
+      void browser.runtime.sendMessage({ type: "PERMISSION_GRANTED" });
+      setStep("category");
+    }
+  };
+
+  const handleLoginCancel = () => {
+    setLoginEmail("");
+    setLoginPassword("");
+    setStep("login");
+  };
+
+  // 권한 여부 결정
   const handlePermissionYes = () => {
-    setFormData({ ...formData, hasPermission: true });
     void browser.runtime.sendMessage({ type: "PERMISSION_GRANTED" });
     setStep("category");
   };
@@ -463,7 +499,7 @@ function App() {
       const platform = formData.category === "job" ? "telegram" : "instagram";
 
       // API 호출
-      analyzeMessages(exampleMessages, platform)
+      analyzeMessages(exampleMessages, platform, formData.category)
         .then((result) => {
           setAnalysisResult(result);
           setStep("result");
@@ -477,7 +513,68 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* 1단계: 권한 요청 */}
+      {/* 로그인 화면 */}
+      {step === "login" && (
+        <div className="step permission-step">
+          <div className="step-content">
+            <h2>로그인</h2>
+            <p>이 확장 프로그램을 사용하려면 로그인이 필요합니다.</p>
+            <div className="button-group">
+              <button className="btn btn-yes" onClick={handleLoginYes}>
+                로그인
+              </button>
+              <button className="btn btn-no" onClick={handleLoginNo}>
+                나중에
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 로그인 폼 */}
+      {step === "loginForm" && (
+        <div className="step permission-step">
+          <div className="step-content">
+            <h2>로그인</h2>
+            <p>이메일 또는 사용자명을 입력해주세요</p>
+            <div className="input-group">
+              <input
+                type="text"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                onKeyPress={handleLoginKeyPress}
+                placeholder="이메일 또는 사용자명"
+                className="text-input"
+                autoFocus
+              />
+            </div>
+            <div className="input-group">
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyPress={handleLoginKeyPress}
+                placeholder="비밀번호"
+                className="text-input"
+              />
+            </div>
+            <div className="button-group">
+              <button className="btn btn-no" onClick={handleLoginCancel}>
+                취소
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleLoginSubmit}
+                disabled={!loginEmail.trim() || !loginPassword.trim()}
+              >
+                로그인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 권한 요청 화면 */}
       {step === "permission" && (
         <div className="step permission-step">
           <div className="step-content">
@@ -499,8 +596,7 @@ function App() {
       {step === "denied" && (
         <div className="step denied-step">
           <div className="step-content">
-            <h2>아쉽습니다</h2>
-            <p>접근 권한을 허락하셔야 이 기능을 사용할 수 있습니다.</p>
+            <h2>접근 권한을 허락하셔야 <br />이 기능을 사용할 수 있습니다.</h2>
             <button className="btn btn-primary" onClick={handleRetryPermission}>
               허락하기
             </button>

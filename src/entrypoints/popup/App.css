@@ -71,6 +71,7 @@
 }
 
 .step-content {
+  margin-top: 30px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -313,6 +314,7 @@
 .input-group {
   display: flex;
   flex-direction: column;
+  width: 70%;
   gap: 8px;
 }
 
