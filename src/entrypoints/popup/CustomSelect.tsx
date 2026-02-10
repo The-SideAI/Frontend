@@ -6,13 +6,15 @@ interface CustomSelectProps {
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   className?: string;
+  placeholder?: string;
 }
 
-export function CustomSelect({ value, onChange, options, className = "" }: CustomSelectProps) {
+export function CustomSelect({ value, onChange, options, className = "", placeholder = "" }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const selectRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find(opt => opt.value === value);
+  const displayLabel = selectedOption?.label || placeholder;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -42,7 +44,7 @@ export function CustomSelect({ value, onChange, options, className = "" }: Custo
         className={`custom-select-trigger ${isOpen ? "open" : ""}`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span className="custom-select-value">{selectedOption?.label}</span>
+        <span className="custom-select-value">{displayLabel}</span>
         <svg 
           className={`custom-select-arrow ${isOpen ? "rotate" : ""}`}
           width="16" 

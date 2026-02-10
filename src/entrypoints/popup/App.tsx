@@ -4,7 +4,7 @@ import { CustomSelect } from "./CustomSelect";
 import { CustomDateTime } from "./CustomDateTime";
 import "./App.css";
 
-type Step = "permission" | "denied" | "category" | "mode" | "conversation" | "purpose" | "analyzing" | "result" | "monitoring";
+type Step = "login" | "loginForm" | "permission" | "denied" | "category" | "mode" | "conversation" | "purpose" | "analyzing" | "result" | "monitoring";
 
 interface FormData {
   hasPermission: boolean;
@@ -35,26 +35,29 @@ interface AnalyzeRequest {
   uuid: string;
   messages: Message[];
   platform: string;
+  type: string;
 }
 
 interface ReasonItem {
-  source: string;
-  note: string;
+  quote: string;
+  reason: string;
 }
 
 interface AnalysisResult {
   riskLevel: string;
   summary: string;
   type: string;
-  reason: ReasonItem[];
-  recommendedQuestions: string[];
-  recommendations?: string[];
+  risk_signals: ReasonItem[];
+  recommended_questions: string[];
+  additional_recommendations?: string[];
 }
 
 function App() {
-  const [step, setStep] = useState<Step>("permission");
+  const [step, setStep] = useState<Step>("login");
+  const [loginEmail, setLoginEmail] = useState<string>("");
+  const [loginPassword, setLoginPassword] = useState<string>("");
   const [formData, setFormData] = useState<FormData>({
-    hasPermission: false,
+    hasPermission: true,
     category: "",
     mode: "",
     selectionMode: "message",
@@ -99,13 +102,15 @@ function App() {
   // API 분석 함수
   const analyzeMessages = async (
     messages: Message[],
-    platform: string
+    platform: string,
+    type: string
   ) => {
     const uuid = crypto.randomUUID();
     const payload: AnalyzeRequest = {
       uuid,
       messages,
       platform,
+      type,
     };
 
     //console.log('\n========== 📤 API REQUEST ==========');
@@ -132,12 +137,12 @@ function App() {
 
       return {
         ...result,
-        reason: Array.isArray(result.reason) ? result.reason : [],
-        recommendedQuestions: Array.isArray(result.recommendedQuestions)
-          ? result.recommendedQuestions
+        risk_signals: Array.isArray(result.risk_signals) ? result.risk_signals : [],
+        recommended_questions: Array.isArray(result.recommended_questions)
+          ? result.recommended_questions
           : [],
-        recommendations: Array.isArray(result.recommendations)
-          ? result.recommendations.slice(0, 3)
+        additional_recommendations: Array.isArray(result.additional_recommendations)
+          ? result.additional_recommendations.slice(0, 3)
           : [],
       } as AnalysisResult;
       
@@ -155,6 +160,12 @@ function App() {
     } catch (error) {
       console.error("API 호출 실패:", error);
       throw error;
+    }
+  };
+
+  const handleLoginKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleLoginSubmit();
     }
   };
 
@@ -262,7 +273,7 @@ function App() {
       return;
     }
 
-    const platform = formData.category === "job" ? "telegram" : "instagram";
+    const platform = formData.category === "구직" ? "telegram" : "instagram";
 
     const buildMonitoringMessages = (): Message[] => {
       const content = formData.purpose?.trim()
@@ -280,7 +291,7 @@ function App() {
     };
 
     const fetchMonitoring = () => {
-      analyzeMessages(buildMonitoringMessages(), platform)
+      analyzeMessages(buildMonitoringMessages(), platform, formData.category)
         .then((result) => {
           setMonitoringResult(result);
         })
@@ -310,11 +321,11 @@ function App() {
 
     rotationTimerRef.current = window.setInterval(() => {
       setMonitoringIndex((prev) => {
-        const length = monitoringResult?.recommendedQuestions?.length || 0;
+        const length = monitoringResult?.recommended_questions?.length || 0;
         if (length === 0) return 0;
         return (prev + 1) % length;
       });
-    }, 3000);
+    }, 5000);
 
     return () => {
       if (rotationTimerRef.current) {
@@ -322,11 +333,36 @@ function App() {
         rotationTimerRef.current = null;
       }
     };
-  }, [step, monitoringResult?.recommendedQuestions]);
+  }, [step, monitoringResult?.recommended_questions]);
 
-  // 1단계: 권한 요청
+  // 로그인 단계
+  const handleLoginYes = () => {
+    setStep("loginForm");
+  };
+
+  const handleLoginNo = () => {
+    setStep("permission");
+  };
+
+  // 로그인 폼 제출
+  const handleLoginSubmit = () => {
+    if (loginEmail.trim() && loginPassword.trim()) {
+      // 아무 문자열이나 입력해도 무조건 로그인 성공
+      setLoginEmail("");
+      setLoginPassword("");
+      void browser.runtime.sendMessage({ type: "PERMISSION_GRANTED" });
+      setStep("category");
+    }
+  };
+
+  const handleLoginCancel = () => {
+    setLoginEmail("");
+    setLoginPassword("");
+    setStep("login");
+  };
+
+  // 권한 여부 결정
   const handlePermissionYes = () => {
-    setFormData({ ...formData, hasPermission: true });
     void browser.runtime.sendMessage({ type: "PERMISSION_GRANTED" });
     setStep("category");
   };
@@ -460,10 +496,10 @@ function App() {
       ];
 
       // 플랫폼 정보 (카테고리 기반)
-      const platform = formData.category === "job" ? "telegram" : "instagram";
+      const platform = formData.category === "구직" ? "telegram" : "instagram";
 
       // API 호출
-      analyzeMessages(exampleMessages, platform)
+      analyzeMessages(exampleMessages, platform, formData.category)
         .then((result) => {
           setAnalysisResult(result);
           setStep("result");
@@ -477,7 +513,85 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* 1단계: 권한 요청 */}
+      {/* 로그인 화면 */}
+      {step === "login" && (
+        <div className="step permission-step">
+          <div className="step-content">
+            <h2>로그인</h2>
+            <p>이 확장 프로그램을 사용하려면 로그인이 필요합니다.</p>
+            <div className="button-group">
+              <button className="btn btn-yes" onClick={handleLoginYes}>
+                로그인
+              </button>
+              <button className="btn btn-no" onClick={handleLoginNo}>
+                나중에
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 로그인 폼 */}
+      {step === "loginForm" && (
+        <div className="step permission-step">
+          <div className="step-content">
+            <h2>로그인</h2>
+            <p>이메일 또는 사용자명을 입력해주세요</p>
+            <div className="input-group">
+              <input
+                type="text"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                onKeyPress={handleLoginKeyPress}
+                placeholder="이메일 또는 사용자명"
+                className="text-input"
+                autoFocus
+              />
+            </div>
+            <div className="input-group">
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyPress={handleLoginKeyPress}
+                placeholder="비밀번호"
+                className="text-input"
+              />
+            </div>
+            <div className="button-group">
+              <button className="btn btn-no" onClick={handleLoginCancel}>
+                취소
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleLoginSubmit}
+                disabled={!loginEmail.trim() || !loginPassword.trim()}
+              >
+                로그인
+              </button>
+            </div>
+            <div style={{ textAlign: "center", marginTop: "12px" }}>
+              <button
+                type="button"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#666",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  padding: "0",
+                }}
+                onClick={() => {}}
+              >
+                회원가입
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 권한 요청 화면 */}
       {step === "permission" && (
         <div className="step permission-step">
           <div className="step-content">
@@ -499,8 +613,7 @@ function App() {
       {step === "denied" && (
         <div className="step denied-step">
           <div className="step-content">
-            <h2>아쉽습니다</h2>
-            <p>접근 권한을 허락하셔야 이 기능을 사용할 수 있습니다.</p>
+            <h2>접근 권한을 허락하셔야 <br />이 기능을 사용할 수 있습니다.</h2>
             <button className="btn btn-primary" onClick={handleRetryPermission}>
               허락하기
             </button>
@@ -517,12 +630,12 @@ function App() {
             <CustomSelect
               value={formData.category}
               onChange={(value) => setFormData({ ...formData, category: value })}
+              placeholder="카테고리 선택"
               options={[
-                { value: "", label: "카테고리 선택" },
-                { value: "job", label: "구직" },
-                { value: "trade", label: "중고거래" },
-                { value: "investment", label: "재태크" },
-                { value: "sidebusiness", label: "부업" },
+                { value: "구직", label: "구직" },
+                { value: "중고거래", label: "중고거래" },
+                { value: "재테크", label: "재테크" },
+                { value: "부업", label: "부업" },
               ]}
             />
             <div className="button-group">
@@ -583,27 +696,25 @@ function App() {
           <div className="step-content">
             <h2>대화 영역 설정</h2>
             <p className="step-description">시간 단위, 날짜 단위로 대화를 선택할 수 있습니다</p>
-            {currentPlatform === "telegram" && (
-              <CustomSelect
-                value={formData.selectionMode}
-                onChange={(value) => {
-                  const mode = value as FormData["selectionMode"];
-                  setFormData((prev) => ({
-                    ...prev,
-                    selectionMode: mode,
-                    conversationStart: "시작 메세지를 선택해주세요",
-                    conversationEnd: "마지막 메세지를 선택해주세요",
-                    conversationStartTime: "",
-                    conversationEndTime: "",
-                  }));
-                  void browser.runtime.sendMessage({ type: "RESET_SELECTIONS" });
-                }}
-                options={[
-                  { value: "message", label: "메세지로 선택" },
-                  { value: "time", label: "시간으로 선택" },
-                ]}
-              />
-            )}
+            <CustomSelect
+              value={formData.selectionMode}
+              onChange={(value) => {
+                const mode = value as FormData["selectionMode"];
+                setFormData((prev) => ({
+                  ...prev,
+                  selectionMode: mode,
+                  conversationStart: "시작 메세지를 선택해주세요",
+                  conversationEnd: "마지막 메세지를 선택해주세요",
+                  conversationStartTime: "",
+                  conversationEndTime: "",
+                }));
+                void browser.runtime.sendMessage({ type: "RESET_SELECTIONS" });
+              }}
+              options={[
+                { value: "message", label: "메세지로 선택" },
+                { value: "time", label: "시간으로 선택" },
+              ]}
+            />
             {timeError && (
               <div className="time-error-toast">
                 ⚠️ {timeError}
@@ -756,8 +867,8 @@ function App() {
           <div className="step-content">
             <div className="result-header">
               <h2>분석 완료</h2>
-              <div className={`risk-badge risk-${getRiskBadgeClass(analysisResult.riskLevel)}`}>
-                <div className="risk-level-text">{analysisResult.riskLevel || "SAFE"}</div>
+              <div className={`risk-badge risk-high`}>
+                <div className="risk-level-text">매우 높음</div>
               </div>
             </div>
 
@@ -783,18 +894,18 @@ function App() {
                 <h3>⚠️ 위험 신호</h3>
               </div>
               <div className="reasons-list">
-                {analysisResult.reason.length === 0 ? (
+                {analysisResult.risk_signals.length === 0 ? (
                   <div className="reason-item">
                     <div className="reason-quote">"위험 신호가 없습니다"</div>
                   </div>
                 ) : (
-                  analysisResult.reason.map((item, index) => (
+                  analysisResult.risk_signals.map((item, index) => (
                     <div key={index} className="reason-item">
                       <div className="reason-header">
                         <span className="reason-number">{index + 1}</span>
-                        <span className="reason-source">{item.source}</span>
+                        <span className="reason-source">{item.quote}</span>
                       </div>
-                      <div className="reason-quote">"{item.note}"</div>
+                      <div className="reason-quote">"{item.reason}"</div>
                     </div>
                   ))
                 )}
@@ -802,13 +913,13 @@ function App() {
             </div>
 
             {/* 추가 권고 사항 */}
-            {analysisResult.recommendations && analysisResult.recommendations.length > 0 && (
+            {analysisResult.additional_recommendations && analysisResult.additional_recommendations.length > 0 && (
               <div className="result-section">
                 <div className="section-header">
                   <h3>✨ 추가 권고</h3>
                 </div>
                 <div className="recommendations-list">
-                  {analysisResult.recommendations.map((rec, index) => (
+                  {analysisResult.additional_recommendations.map((rec, index) => (
                     <div
                       key={index}
                       className="recommendation-box"
@@ -858,8 +969,8 @@ function App() {
                 type="button"
                 className="recommendation-box clickable"
                 onClick={() => {
-                  const text = monitoringResult?.recommendedQuestions?.length
-                    ? monitoringResult.recommendedQuestions[monitoringIndex]
+                  const text = monitoringResult?.recommended_questions?.length
+                    ? monitoringResult.recommended_questions[monitoringIndex]
                     : "";
                   if (text) {
                     void handleCopyRecommendation(text);
@@ -868,8 +979,8 @@ function App() {
                 aria-label="추천 질문 복사"
               >
                 <p key={monitoringIndex} className="recommendation-text fade-swap">
-                  {monitoringResult?.recommendedQuestions?.length
-                    ? monitoringResult.recommendedQuestions[monitoringIndex]
+                  {monitoringResult?.recommended_questions?.length
+                    ? monitoringResult.recommended_questions[monitoringIndex]
                     : "추천 질문을 불러오는 중입니다..."}
                 </p>
               </button>
@@ -878,9 +989,9 @@ function App() {
             <div className="warning-reasons">
               <h4>의심가는 대화</h4>
               <ul className="reason-list">
-                {monitoringResult?.reason?.length ? (
-                  monitoringResult.reason.map((item, index) => (
-                    <li key={index}>{item.note}</li>
+                {monitoringResult?.risk_signals?.length ? (
+                  monitoringResult.risk_signals.map((item, index) => (
+                    <li key={index}>{item.reason}</li>
                   ))
                 ) : (
                   <li>분석 결과를 불러오는 중입니다</li>
